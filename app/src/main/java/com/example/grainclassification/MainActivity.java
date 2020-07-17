@@ -1,19 +1,25 @@
 package com.example.grainclassification;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.Interpreter;
@@ -37,9 +43,11 @@ import java.util.List;
 import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
-ImageView imageView;
-Button buclassify;
-TextView classitext;
+    private static final int PERMISSION_CODE = 1000;
+    private static final int IMAGE_CAPTURE_CODE = 1001 ;
+    ImageView imageView;
+    Button buclassify, opencamera;
+    TextView classitext;
     protected Interpreter tflite;
     private MappedByteBuffer tfliteModel;
     private TensorImage inputImageBuffer;
@@ -54,6 +62,7 @@ TextView classitext;
     private Bitmap bitmap;
     private List<String> labels;
     Uri imageuri;
+    Uri image_uri;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -61,6 +70,7 @@ TextView classitext;
         imageView=(ImageView)findViewById(R.id.image);
         buclassify=(Button)findViewById(R.id.classify);
         classitext=(TextView)findViewById(R.id.classifytext);
+        opencamera=findViewById(R.id.capture_img_btn);
 
         imageView.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -69,6 +79,24 @@ TextView classitext;
                 intent.setType("image/*");
                 intent.setAction(Intent.ACTION_GET_CONTENT);
                 startActivityForResult(Intent.createChooser(intent,"Select Picture"),12);
+            }
+        });
+
+        opencamera.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED || checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_DENIED){
+                        String[] permission = {Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE};
+                        requestPermissions(permission,PERMISSION_CODE);
+                    }
+                    else {
+                        opencamera();
+                    }
+                }
+                else {
+                    opencamera();
+                }
             }
         });
 
@@ -106,6 +134,31 @@ TextView classitext;
 
     }
 
+    private void opencamera() {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.TITLE,"New Picture");
+        values.put(MediaStore.Images.Media.DESCRIPTION,"From the camera");
+        image_uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);
+        //camera intent
+        Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, image_uri);
+        startActivityForResult(cameraIntent, IMAGE_CAPTURE_CODE);
+
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode){
+            case PERMISSION_CODE:
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                    opencamera();
+                }
+                else
+                {
+                    Toast.makeText(this, "Permission Denied", Toast.LENGTH_SHORT).show();
+                }
+        }
+    }
 
     private TensorImage loadImage(final Bitmap bitmap) {
         // Loads bitmap into a TensorImage.
@@ -163,18 +216,32 @@ TextView classitext;
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-
         if(requestCode==12 && resultCode==RESULT_OK && data!=null) {
-            imageuri = data.getData();
+          imageuri = data.getData();
+          imageView.setImageURI(image_uri);
+          try {
+          bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), imageuri);
+          imageView.setImageBitmap(bitmap);
+          } catch (IOException e) {
+          e.printStackTrace();
+          }
+          }
+        else if(requestCode==IMAGE_CAPTURE_CODE && resultCode == RESULT_OK){
+            imageView.setImageURI(image_uri );
             try {
-                bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), imageuri);
+                bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), image_uri);
                 imageView.setImageBitmap(bitmap);
             } catch (IOException e) {
                 e.printStackTrace();
             }
+
         }
+        }
+
+
     }
-}
+
+
 
 
 
